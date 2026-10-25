@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from pyiceberg.catalog import Catalog
@@ -26,6 +26,8 @@ def compact_closed_days(cat: Catalog, min_files: int = 8, max_days: int = 3) -> 
     by_day: dict[int, int] = {}
     for f in files:
         day = f["partition"].get("event_day") if isinstance(f.get("partition"), dict) else None
+        if isinstance(day, date):  # pyiceberg returns day-transform partitions as datetime.date
+            day = (day - date(1970, 1, 1)).days
         if day is not None:
             by_day[day] = by_day.get(day, 0) + 1
     today = (datetime.now(UTC).date() - datetime(1970, 1, 1).date()).days

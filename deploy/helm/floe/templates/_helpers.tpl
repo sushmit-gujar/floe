@@ -43,7 +43,7 @@ app.kubernetes.io/component: {{ .component }}
 - name: wait-ready
   image: {{ include "floe.image" $r }}
   imagePullPolicy: {{ $r.Values.image.pullPolicy }}
-  args: ["wait-ready", "--timeout", "600"{{ if not .kafka }}, "--no-kafka"{{ end }}]
+  args: ["wait-ready", "--timeout", "600"{{ if not .kafka }}, "--no-kafka"{{ end }}{{ if .noCatalog }}, "--no-catalog"{{ end }}]
   envFrom: {{- include "floe.envFrom" $r | nindent 4 }}
   securityContext: {{- toYaml $r.Values.containerSecurityContext | nindent 4 }}
   resources:

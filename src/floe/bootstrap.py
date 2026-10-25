@@ -108,12 +108,19 @@ def run(s: Settings, kafka: bool = True) -> None:
     log.info("bootstrap complete")
 
 
-def wait_ready(s: Settings, timeout: float = 600, kafka: bool = True) -> None:
-    """Used as an initContainer: succeed once bronze exists and (if reachable) the topic exists."""
+def wait_ready(s: Settings, timeout: float = 600, kafka: bool = True, catalog: bool = True) -> None:
+    """Used as an initContainer: succeed once bronze exists and/or the topic exists.
+
+    Kafka-only clients (the live producer) pass catalog=False: under the chart's
+    NetworkPolicies they are not allowed to reach the catalog at all.
+    """
+    if not (kafka or catalog):
+        raise ValueError("wait_ready needs at least one of kafka/catalog")
 
     def check() -> None:
-        cat = lake.catalog(s)
-        cat.load_table(lake.BRONZE)
+        if catalog:
+            cat = lake.catalog(s)
+            cat.load_table(lake.BRONZE)
         if not kafka:
             return
         from confluent_kafka.admin import AdminClient

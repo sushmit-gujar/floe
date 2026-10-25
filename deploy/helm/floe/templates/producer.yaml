@@ -22,7 +22,8 @@ spec:
       serviceAccountName: {{ $n }}-workload
       automountServiceAccountToken: false
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      initContainers: {{- include "floe.waitReady" (dict "root" . "kafka" true) | nindent 8 }}
+      # Kafka-only: the producer's pod labels grant no catalog access, so only wait for the topic.
+      initContainers: {{- include "floe.waitReady" (dict "root" . "kafka" true "noCatalog" true) | nindent 8 }}
       containers:
         - name: producer
           image: {{ include "floe.image" . }}

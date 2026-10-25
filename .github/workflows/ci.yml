@@ -72,7 +72,7 @@ jobs:
       - name: Runs as non-root
         run: test "$(docker run --rm --entrypoint id floe:ci -u)" = "10001"
       - name: Trivy (gate on fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: floe:ci
           scanners: vuln
@@ -81,7 +81,7 @@ jobs:
           exit-code: "1"
           format: table
       - name: Trivy SARIF (all severities, informational)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: floe:ci
           scanners: vuln
@@ -89,7 +89,7 @@ jobs:
           output: trivy-image.sarif
           skip-setup-trivy: true
       - name: Trivy misconfiguration scan of the Helm chart
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: deploy/helm/floe
@@ -134,7 +134,8 @@ jobs:
         run: |
           kubectl -n floe get pods -o wide
           kubectl -n floe get events --sort-by=.lastTimestamp | tail -50
-          for d in processor api lakekeeper; do kubectl -n floe logs deploy/floe-$d --all-containers --tail=80 || true; done
+          kubectl -n floe get networkpolicy
+          for d in processor producer-live api lakekeeper; do kubectl -n floe logs deploy/floe-$d --all-containers --tail=80 || true; done
           kubectl -n keda logs deploy/keda-operator --tail=50 || true
       - uses: actions/upload-artifact@v4
         if: always()

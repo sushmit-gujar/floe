@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     w = sub.add_parser("wait-ready", help="block until bootstrap created the tables and topic")
     w.add_argument("--timeout", type=float, default=600)
     w.add_argument("--no-kafka", action="store_true", help="only wait for the catalog tables")
+    w.add_argument("--no-catalog", action="store_true", help="only wait for the topic (Kafka-only clients)")
 
     p = sub.add_parser("produce", help="produce events")
     p.add_argument("mode", choices=["replay", "wikimedia"])
@@ -66,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "wait-ready":
         from floe import bootstrap
 
-        bootstrap.wait_ready(s, args.timeout, kafka=not args.no_kafka)
+        bootstrap.wait_ready(s, args.timeout, kafka=not args.no_kafka, catalog=not args.no_catalog)
     elif args.cmd == "process":
         from floe import process
 

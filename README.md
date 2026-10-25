@@ -140,8 +140,8 @@ and was **OOM-killed** at 2.8M rows. Bronze is now streamed in record batches in
 
 `.github/workflows/ci.yml` runs on every push:
 
-1. **test:** ruff plus 20 pytest tests on Python 3.11, 3.12 and 3.13. They cover the contract, exactly-once (restart, zombie fencing,
-   stale commits), the dbt gate (pass, duplicates block publishing, source duplicates are deduped, reject-rate breach) and the API,
+1. **test:** ruff plus 21 pytest tests on Python 3.11, 3.12 and 3.13. They cover the contract, exactly-once (restart, zombie fencing,
+   stale commits), the dbt gate (pass, duplicates block publishing, source duplicates are deduped, reject-rate breach), partition compaction and the API,
    all against a real Iceberg catalog with no broker.
 2. **chart:** `helm lint` and `kubeconform -strict` for both the KEDA and HPA variants.
 3. **image:** build, non-root check, Trivy gates and SARIF upload.
