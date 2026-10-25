@@ -96,3 +96,18 @@ def test_api_serves_gold(cat, contract, sample, settings, tmp_path):
     assert len(client.get("/v1/top-pages", params={"limit": 5}).json()) == 5
     m = client.get("/metrics").text
     assert "floe_dq_pass_rate 1.0" in m
+
+
+def test_api_picks_up_first_publish_without_waiting_for_ttl(cat, contract, sample, settings, tmp_path, monkeypatch):
+    import time as _time
+
+    client = TestClient(create_app(settings))
+    assert client.get("/readyz").json()["tables"] == 0  # cache primed before any gold exists
+    assert client.get("/v1/summary").status_code == 503
+    ingest(cat, contract, sample, run_id="first", n=1000)
+    assert transform.run(settings, workdir=str(tmp_path / "dbt"))["status"] == "pass"
+    real = _time.monotonic
+    monkeypatch.setattr("floe.api.time.monotonic", lambda: real() + 2)  # > min_refresh, < 15 s TTL
+    r = client.get("/v1/summary")
+    assert r.status_code == 200, r.text
+    assert r.json()["last_batch_run"]["status"] == "pass"

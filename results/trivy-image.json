@@ -1,0 +1,19 @@
+{
+  "image": "floe:dev",
+  "scanned_at": "2026-10-24T23:55:54.801665624-04:00",
+  "trivy_version": "Version: 0.76.1",
+  "scanners": [
+    "vuln"
+  ],
+  "by_severity": {
+    "LOW": 61,
+    "HIGH": 44,
+    "MEDIUM": 58,
+    "UNKNOWN": 1
+  },
+  "fixable_by_severity": {},
+  "by_class": {
+    "os-pkgs": 164
+  },
+  "note": "All findings are Debian OS packages with no fixed version; the Python dependencies have none."
+}

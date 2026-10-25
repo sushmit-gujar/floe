@@ -81,19 +81,21 @@ gold↔silver reconciliation, grain and future timestamps). Gold tables are publ
 test passes**. Every run, pass or fail, is appended to `ops.dq_runs`, which feeds the DQ panels.
 
 **The gate caught a real problem during development.** After several `kubectl rollout restart`s of the live producer,
-`assert_bronze_exactly_once` failed and gold wasn't published. Investigation showed 4,141 Wikimedia events
-written twice at *different* Kafka offsets, all within the four minutes of those restarts. Bronze still had exactly
-one row per Kafka record (2,830,107 rows = 2,830,107 distinct partition/offset pairs). The cause was a
-RollingUpdate briefly running two producers on the same SSE feed. Fixes:
+`assert_bronze_exactly_once` failed on five consecutive transform runs (23:21–23:25 EDT on 2026-10-24) and gold
+wasn't published; `ops.dq_runs` records every one of them (exported in `results/dq-runs.json`). The duplicates were
+Wikimedia events written at *different* Kafka offsets, i.e. the same event produced twice, not a processor replay.
+The cause was a RollingUpdate briefly running two producers on the same SSE feed. Fixes:
 the live producer now uses `strategy: Recreate`, and `ingest_quality` now separates **`bronze_duplicates`**
 (one row per Kafka record: the processor guarantee, which the gate enforces) from **`source_duplicates`** (the same event
-delivered twice upstream, deduped in silver and reported).
+delivered twice upstream, deduped in silver and reported). After the fix, `ingest_quality` in the e2e run
+(`results/e2e.json`) reported `bronze_duplicates = 0` over 2,866,099 bronze rows and `source_duplicates = 4,724`.
 
 ## Results (measured)
 
 **Hardware:** one cloud VM, Intel Xeon, 8 vCPUs, 15.6 GiB RAM, kernel 6.12. kind v0.33.0 runs Kubernetes v1.37.0 on a
 **single node**, so Redpanda, MinIO, Postgres, the catalog, Prometheus, Grafana and every processor replica share
-the same 8 vCPUs. The numbers below come from `make bench` (`results/bench.json`), run 2026-10-24 between 23:00 and 23:10 EDT.
+the same 8 vCPUs. The steady, burst and pod-kill rows come from `make bench` (`results/bench.json`), run 2026-10-24
+between 23:00 and 23:09 EDT; the e2e and batch rows come from `make e2e` (`results/e2e.json`) at 23:30 EDT.
 Latency is *produce → queryable*: the Iceberg snapshot timestamp of the commit that made the row visible, minus the
 producer's send time.
 
@@ -104,11 +106,11 @@ producer's send time.
 | Burst, 1.2M events, KEDA (1→6) | first scale-out decision **7.0 s** after burst start, **6 replicas ready at 12.0 s**; drained in **38.7 s = 30,968 ev/s**; back to 1 replica at 218 s; exactly once |
 | Pod kill (SIGKILL, grace 0), 2 replicas at 2,000 ev/s | replacement Ready in **5.4 s**; largest gap between Iceberg commits **2.46 s**; survivor's first commit 0.09 s after the kill; 180,000 rows **0 duplicates, 0 missing**; p99 2,782 ms |
 | e2e (`make e2e`), 20,000 events incl. 390 invalid and 177 late | 19,610 rows exactly once, 390/390 in the DLQ, p50 1,347 ms / p95 1,426 ms; dbt 17/17 tests passed, gold published |
-| Batch layer at scale | `dbt build` over a 24 h window of **2.88M rows** in 13.6 s inside a 1,536 MiB pod limit |
+| Batch layer at scale | `dbt build` over a 24 h window (**2.88M silver rows**) in 13.6 s inside a 1,536 MiB pod limit |
 
 ![Burst timeline](docs/autoscale.svg)
 
-**Reading the autoscaling numbers honestly:** KEDA's gain here is only about 12%. The burst is short compared with
+**Reading the autoscaling numbers honestly:** KEDA's gain here is only about 13% (30,968 vs 27,385 ev/s). The burst is short compared with
 the time it takes to scale out, and on a single 8-vCPU node the extra replicas compete with Redpanda and MinIO for CPU.
 On a multi-node cluster the per-replica throughput (about 27k ev/s) has room to add up. That isn't measured here.
 The lag curve is step-shaped because lag is read from the group offsets committed after each Iceberg commit.
@@ -133,15 +135,15 @@ and was **OOM-killed** at 2.8M rows. Bronze is now streamed in record batches in
 - **Image:** multi-stage build on `python:3.12-slim-trixie` with uv, locked dependencies (`requirements.lock`), no pip
   at runtime, uid 10001.
 - **Trivy in CI:** the build fails on any *fixable* HIGH/CRITICAL CVE, a full SARIF report goes to code scanning, and a misconfiguration scan
-  of the Helm chart fails on HIGH/CRITICAL. At the time of writing the image had 0 critical findings and 44 high findings, all in Debian base
-  packages with no fix available. The Python dependencies were clean.
+  of the Helm chart fails on HIGH/CRITICAL. A local Trivy 0.76.1 scan on 2026-10-24 (`results/trivy-image.json`) found 0 critical and
+  44 high findings, all in Debian base packages with no fix available. The Python dependencies were clean.
 
 ## CI
 
 `.github/workflows/ci.yml` runs on every push:
 
-1. **test:** ruff plus 21 pytest tests on Python 3.11, 3.12 and 3.13. They cover the contract, exactly-once (restart, zombie fencing,
-   stale commits), the dbt gate (pass, duplicates block publishing, source duplicates are deduped, reject-rate breach), partition compaction and the API,
+1. **test:** ruff plus 22 pytest tests on Python 3.11, 3.12 and 3.13. They cover the contract, exactly-once (restart, zombie fencing,
+   stale commits), the dbt gate (pass, duplicates block publishing, source duplicates are deduped, reject-rate breach), partition compaction and the API (including picking up the first gold publish without waiting out its cache TTL),
    all against a real Iceberg catalog with no broker.
 2. **chart:** `helm lint` and `kubeconform -strict` for both the KEDA and HPA variants.
 3. **image:** build, non-root check, Trivy gates and SARIF upload.

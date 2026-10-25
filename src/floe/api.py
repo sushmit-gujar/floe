@@ -30,17 +30,18 @@ reject_rate = Gauge("floe_ingest_reject_rate", "Contract reject rate over the ba
 class Lake:
     """Caches gold tables as Arrow for ``ttl`` seconds; DuckDB queries them in memory."""
 
-    def __init__(self, s: Settings, ttl: float = 15.0):
+    def __init__(self, s: Settings, ttl: float = 15.0, min_refresh: float = 1.0):
         self.s = s
         self.ttl = ttl
+        self.min_refresh = min_refresh
         self._lock = threading.Lock()
         self._at = 0.0
         self._tables: dict[str, pa.Table] = {}
         self._cat = None
 
-    def tables(self) -> dict[str, pa.Table]:
+    def tables(self, force: bool = False) -> dict[str, pa.Table]:
         with self._lock:
-            if time.monotonic() - self._at > self.ttl:
+            if force or time.monotonic() - self._at > self.ttl:
                 if self._cat is None:
                     self._cat = lake.catalog(self.s)
                 fresh = {}
@@ -53,17 +54,30 @@ class Lake:
                 self._at = time.monotonic()
             return self._tables
 
-    def query(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
-        tabs = self.tables()
+    def _execute(self, tabs: dict[str, pa.Table], sql: str, params: list[Any] | None) -> list[dict[str, Any]]:
         con = duckdb.connect()
         for ident, arr in tabs.items():
             con.register(ident.replace(".", "_"), arr)
-        try:
-            cur = con.execute(sql, params or [])
-        except duckdb.CatalogException as exc:
-            raise HTTPException(503, "gold tables not published yet") from exc
+        cur = con.execute(sql, params or [])
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def query(self, sql: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
+        tabs = self.tables()
+        try:
+            return self._execute(tabs, sql, params)
+        except duckdb.CatalogException:
+            pass
+        # A table was missing from the cache. If the cache is more than a second old, gold may
+        # have been published since (first publish on a fresh install): refresh once, don't wait
+        # out the TTL.
+        if time.monotonic() - self._at > self.min_refresh:
+            tabs = self.tables(force=True)
+            try:
+                return self._execute(tabs, sql, params)
+            except duckdb.CatalogException:
+                pass
+        raise HTTPException(503, "gold tables not published yet")
 
 
 def create_app(s: Settings | None = None) -> FastAPI:
