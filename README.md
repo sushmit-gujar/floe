@@ -147,8 +147,20 @@ and was **OOM-killed** at 2.8M rows. Bronze is now streamed in record batches in
    all against a real Iceberg catalog with no broker.
 2. **chart:** `helm lint` and `kubeconform -strict` for both the KEDA and HPA variants.
 3. **image:** build, non-root check, Trivy gates and SARIF upload.
-4. **e2e:** creates a kind cluster, installs KEDA, `make deploy`, runs `run_e2e.py --require-netpol`, then a benchmark smoke run
-   (steady plus pod kill) with results uploaded as an artifact.
+4. **e2e:** creates a kind cluster, installs KEDA, `make deploy`, runs the full `run_e2e.py --require-netpol` (the same 20,000
+   events and checks as `make e2e`, plus NetworkPolicy enforcement), then a smaller benchmark smoke run than `make bench`:
+   steady 1,000 ev/s for 30 s and a pod kill at 1,000 ev/s for 60 s (no 1.2M bursts), which fails the job unless both stay
+   exactly once. Results are uploaded as an artifact.
+
+The first green run (`results/e2e-ci.json`, `results/bench-ci.json`, run
+[40160447133](https://github.com/sushmit-gujar/floe/actions/runs/40160447133), 2026-10-25 00:03 EDT, on a 4-vCPU AMD EPYC 7763
+GitHub runner with kind v0.31.0 / Kubernetes v1.35.0) passed all 9 e2e checks with NetworkPolicies enforced: 19,610 rows,
+0 duplicates, 0 missing, p50 2,063 ms / p95 2,199 ms. The smoke run delivered 30,000 steady rows (p95 2,260 ms) and 60,000 rows
+through a SIGKILL (replacement Ready in 7.1 s, largest commit gap 6.98 s), all exactly once.
+
+Enforcing NetworkPolicies in CI caught a real gap the dev VM couldn't: the live producer's init container read the Iceberg
+catalog, but the producer pod only carries `floe.io/kafka-client`, so it hung in `Init` until Helm timed out. Kafka-only
+clients now wait for the topic only (`wait-ready --no-catalog`).
 
 ## Running it
 

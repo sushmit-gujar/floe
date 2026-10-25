@@ -277,6 +277,7 @@ def main() -> int:
     ap.add_argument("--scale-down-watch", type=float, default=300)
     ap.add_argument("--scenarios", default="steady,burst1,burstkeda,kill")
     ap.add_argument("--out", default="results/bench.json")
+    ap.add_argument("--assert-exactly-once", action="store_true", help="exit 1 unless every scenario is exactly once")
     a = ap.parse_args()
     k8s.NS = a.namespace
     ts = int(time.time())
@@ -314,6 +315,11 @@ def main() -> int:
         pin_replicas(None)
         if live:
             k8s.kubectl("scale", "deploy/floe-producer-live", "--replicas=1", check=False)
+    if a.assert_exactly_once:
+        bad = [sc for sc, r in report["scenarios"].items() if not (r.get("verify") or {}).get("exactly_once")]
+        for sc in report["scenarios"]:
+            print(f"{'FAIL' if sc in bad else 'PASS'}  {sc}: exactly once")
+        return 1 if bad else 0
     return 0
 
 

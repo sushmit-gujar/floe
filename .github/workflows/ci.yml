@@ -125,10 +125,10 @@ jobs:
         run: make deploy
       - name: End-to-end test
         run: python3 tests/e2e/run_e2e.py --require-netpol --out results/e2e-ci.json
-      - name: Benchmark smoke (steady latency + pod kill)
+      - name: Benchmark smoke (steady latency + pod kill, must stay exactly once)
         run: |
           python3 bench/run_bench.py --scenarios steady,kill --steady-rate 1000 --steady-seconds 30 \
-            --kill-rate 1000 --kill-seconds 60 --kill-after 20 --out results/bench-ci.json
+            --kill-rate 1000 --kill-seconds 60 --kill-after 20 --out results/bench-ci.json --assert-exactly-once
       - name: Diagnostics
         if: failure()
         run: |
