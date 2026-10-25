@@ -1,0 +1,35 @@
+{{- $n := include "floe.name" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $n }}-bootstrap-r{{ .Release.Revision }}
+  labels: {{- include "floe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bootstrap
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: {{- include "floe.labels" . | nindent 8 }}
+        app.kubernetes.io/component: bootstrap
+        floe.io/kafka-client: "true"
+        floe.io/catalog-client: "true"
+        floe.io/s3-client: "true"
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ $n }}-workload
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: bootstrap
+          image: {{ include "floe.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [bootstrap]
+          envFrom: {{- include "floe.envFrom" . | nindent 12 }}
+          env: {{- include "floe.env" . | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          volumeMounts: {{- include "floe.tmpMount" . | nindent 12 }}
+      volumes: {{- include "floe.tmpVolume" . | nindent 8 }}

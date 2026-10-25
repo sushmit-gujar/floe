@@ -1,0 +1,21 @@
+select
+    event_id,
+    event_time,
+    date_trunc('minute', event_time) as event_minute,
+    wiki,
+    domain,
+    change_type,
+    namespace,
+    title,
+    user_name,
+    is_bot,
+    coalesce(is_minor, false) as is_minor,
+    coalesce(length_new, 0) - coalesce(length_old, 0) as bytes_delta,
+    revision_new,
+    produced_at,
+    ingested_at,
+    (epoch(produced_at) - epoch(event_time)) > {{ var('late_after_seconds') }} as is_late,
+    kafka_partition,
+    kafka_offset,
+    batch_id
+from {{ source('bronze', 'wiki_edits') }}

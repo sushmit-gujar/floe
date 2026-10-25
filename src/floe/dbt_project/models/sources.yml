@@ -1,0 +1,11 @@
+version: 2
+sources:
+  # Staged from Iceberg into the DuckDB working file by floe.transform.stage_bronze()
+  # (streamed record batches + lookback filter pushed down to Iceberg file pruning).
+  - name: bronze
+    schema: bronze
+    tables:
+      - name: wiki_edits
+        description: Contract-conforming events committed exactly once by the stream processor.
+      - name: wiki_edits_rejected
+        description: Dead-letter rows (contract violations), at-least-once.

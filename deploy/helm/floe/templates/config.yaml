@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "floe.name" . }}-config
+  labels: {{- include "floe.labels" . | nindent 4 }}
+data:
+  FLOE_KAFKA_BOOTSTRAP: "{{ include "floe.name" . }}-redpanda:9092"
+  FLOE_TOPIC: {{ .Values.kafka.topic | quote }}
+  FLOE_PARTITIONS: {{ .Values.kafka.partitions | quote }}
+  FLOE_GROUP_ID: "floe-processor"
+  FLOE_CATALOG_URI: "http://{{ include "floe.name" . }}-lakekeeper:8181/catalog"
+  FLOE_MANAGEMENT_URI: "http://{{ include "floe.name" . }}-lakekeeper:8181/management"
+  FLOE_WAREHOUSE: {{ .Values.warehouse | quote }}
+  FLOE_S3_ENDPOINT: "http://{{ include "floe.name" . }}-minio:9000"
+  FLOE_S3_BUCKET: {{ .Values.bucket | quote }}
+  FLOE_BATCH_MAX_ROWS: {{ .Values.processor.batchMaxRows | quote }}
+  FLOE_FLUSH_INTERVAL_S: {{ .Values.processor.flushIntervalSeconds | quote }}
+  FLOE_TRANSFORM_LOOKBACK_HOURS: {{ .Values.transform.lookbackHours | quote }}

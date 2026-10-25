@@ -1,0 +1,31 @@
+# Data contract for the `wiki_edits` stream.
+#
+# Producers emit raw Wikimedia EventStreams `mediawiki.recentchange` events.
+# The stream processor enforces this contract at ingest: conforming events land
+# in bronze.wiki_edits, others land in bronze.wiki_edits_rejected with the reason.
+# The batch layer enforces the `quality` section with dbt tests.
+name: wiki_edits
+version: 1
+owner: data-platform
+topic: wiki.recentchange.v1
+description: One row per change on a Wikimedia wiki (edit, page creation, log action, categorisation).
+fields:
+  - {name: event_id,     source: meta.id,         type: string,    required: true,  max_length: 64}
+  - {name: event_time,   source: meta.dt,         type: timestamp, required: true}
+  - {name: wiki,         source: wiki,            type: string,    required: true,  max_length: 64}
+  - {name: domain,       source: meta.domain,     type: string,    required: true,  max_length: 128}
+  - {name: change_type,  source: type,            type: string,    required: true,  enum: [edit, new, log, categorize]}
+  - {name: namespace,    source: namespace,       type: int,       required: true,  min: -2}
+  - {name: title,        source: title,           type: string,    required: true,  max_length: 1024}
+  - {name: user_name,    source: user,            type: string,    required: false, max_length: 256}
+  - {name: is_bot,       source: bot,             type: bool,      required: true}
+  - {name: is_minor,     source: minor,           type: bool,      required: false}
+  - {name: length_old,   source: length.old,      type: long,      required: false, min: 0}
+  - {name: length_new,   source: length.new,      type: long,      required: false, min: 0}
+  - {name: revision_new, source: revision.new,    type: long,      required: false, min: 0}
+  - {name: produced_at,  source: floe_produced_at, type: timestamp, required: true}
+quality:
+  unique: [event_id]
+  max_reject_rate: 0.05        # share of events rejected at ingest, per batch run
+  freshness_sla_seconds: 900   # newest committed event must be younger than this
+  late_after_seconds: 600      # event_time older than produced_at by more than this = late

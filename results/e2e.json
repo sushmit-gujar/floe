@@ -1,0 +1,98 @@
+{
+  "run_id": "e2e1792899015",
+  "started_at": 1792899015,
+  "host": "dev-vm",
+  "produce": {
+    "run_id": "e2e1792899015",
+    "sent": 20000,
+    "valid": 19610,
+    "invalid": 390,
+    "late": 177,
+    "kinds": {
+      "valid": 19433,
+      "late": 177,
+      "missing_title": 103,
+      "not_json": 108,
+      "bad_enum": 79,
+      "bad_type": 100
+    },
+    "unflushed": 0,
+    "started_at": 1792899016.1502507,
+    "finished_at": 1792899016.6692498,
+    "seconds": 0.519,
+    "rate": 38535.7
+  },
+  "verify": {
+    "rows": 19610,
+    "distinct_ids": 19610,
+    "batches": 2,
+    "rows_with_commit_ts": 19610,
+    "p50_ms": 1347.0,
+    "p95_ms": 1426.0,
+    "p99_ms": 1432.0,
+    "max_ms": 4008,
+    "first_produced_ms": 1792899016150,
+    "last_commit_ms": 1792899020343,
+    "run_id": "e2e1792899015",
+    "expected_valid": 19610,
+    "duplicates": 0,
+    "missing": 0,
+    "exactly_once": true,
+    "waited_s": 10.2,
+    "e2e_span_s": 4.193,
+    "e2e_events_per_s": 4677.1,
+    "rejected_rows": 390,
+    "rejected_distinct": 390,
+    "expected_rejected": 390,
+    "rejects_ok": true
+  },
+  "seconds_produce_to_verified": 26.5,
+  "transform": {
+    "run_id": "b9784ca3274b4f268437a8fe4c35bb1b",
+    "started_at": "2026-10-25T03:30:45.509281+00:00",
+    "finished_at": "2026-10-25T03:30:59.122757+00:00",
+    "status": "pass",
+    "models_ok": 7,
+    "models_failed": 0,
+    "tests_passed": 17,
+    "tests_failed": 0,
+    "tests_warned": 0,
+    "failed_tests": null,
+    "silver_rows": 2882375,
+    "published": true,
+    "seconds": 13.613
+  },
+  "api": {
+    "top_wiki": "zhwikisource",
+    "top_wiki_edits": 825562,
+    "ingest_quality": {
+      "measured_at": "2026-10-25T03:30:16.939785Z",
+      "accepted": 2861375,
+      "rejected": 780,
+      "reject_rate": 0.00027,
+      "late": 354,
+      "bronze_rows": 2866099,
+      "bronze_distinct": null,
+      "bronze_duplicates": 0,
+      "max_event_time": "2026-10-25T03:30:03.731000Z",
+      "max_ingested_at": "2026-10-25T03:30:03.776233Z",
+      "freshness_seconds": 13.163552045822144,
+      "source_duplicates": 4724
+    }
+  },
+  "keda_hpa_current_metric": {
+    "averageValue": "64"
+  },
+  "networkpolicy_enforced": false,
+  "checks": {
+    "exactly_once": true,
+    "dead_letter_complete": true,
+    "dbt_tests_pass": true,
+    "gold_published": true,
+    "api_serves_gold": true,
+    "api_reports_quality": true,
+    "prometheus_scrapes_pipeline": true,
+    "keda_lag_metric_flowing": true
+  },
+  "passed": true
+}

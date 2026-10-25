@@ -1,0 +1,10 @@
+# Single-node kind cluster.
+# - kube-proxy in nftables mode (works on kernels without the iptables `statistic` match).
+# - kindnet (kind >= 0.24) enforces NetworkPolicy where the kernel has nfqueue support.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: floe
+networking:
+  kubeProxyMode: nftables
+nodes:
+  - role: control-plane

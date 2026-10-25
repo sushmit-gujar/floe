@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "floe"
+version = "0.1.0"
+description = "Streaming + batch Iceberg lakehouse on Kubernetes: Redpanda -> exactly-once processor -> Iceberg/MinIO -> dbt -> query API, with KEDA lag autoscaling and Prometheus/Grafana."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Sushmit Gujar", email = "sushmit.gujar@gmail.com" }]
+dependencies = [
+  "pyiceberg[pyarrow,pyiceberg-core]==0.12.0",
+  "pyarrow>=18",
+  "confluent-kafka>=2.6",
+  "duckdb>=1.4",
+  "dbt-core>=1.10",
+  "dbt-duckdb>=1.10",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "prometheus-client>=0.21",
+  "pyyaml>=6",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "pyiceberg[sql-sqlite]==0.12.0"]
+
+[project.scripts]
+floe = "floe.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/floe"]
+
+[tool.ruff]
+line-length = 135
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "BLE", "N"]
+ignore = ["N818", "B905"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

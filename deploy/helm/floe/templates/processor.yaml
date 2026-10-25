@@ -1,0 +1,117 @@
+{{- $n := include "floe.name" . -}}
+{{- $a := .Values.processor.autoscaling -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $n }}-processor
+  labels: {{- include "floe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: processor
+spec:
+  replicas: {{ $a.minReplicas }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "processor") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 1, maxUnavailable: 0}
+  template:
+    metadata:
+      labels: {{- include "floe.labels" . | nindent 8 }}
+        app.kubernetes.io/component: processor
+        floe.io/kafka-client: "true"
+        floe.io/catalog-client: "true"
+        floe.io/s3-client: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: {{ $n }}-workload
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers: {{- include "floe.waitReady" (dict "root" . "kafka" true) | nindent 8 }}
+      containers:
+        - name: processor
+          image: {{ include "floe.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [process]
+          envFrom: {{- include "floe.envFrom" . | nindent 12 }}
+          ports:
+            - {name: http, containerPort: 8080}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.processor.resources | nindent 12 }}
+          volumeMounts: {{- include "floe.tmpMount" . | nindent 12 }}
+      volumes: {{- include "floe.tmpVolume" . | nindent 8 }}
+---
+{{- if $a.keda }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $n }}-processor
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ $n }}-processor
+  minReplicaCount: {{ $a.minReplicas }}
+  maxReplicaCount: {{ min $a.maxReplicas .Values.kafka.partitions }}
+  pollingInterval: {{ $a.pollingInterval }}
+  cooldownPeriod: {{ $a.cooldownPeriod }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - {type: Pods, value: 6, periodSeconds: 15}
+        scaleDown:
+          stabilizationWindowSeconds: {{ $a.scaleDownStabilizationSeconds }}
+          policies:
+            - {type: Pods, value: 1, periodSeconds: 30}
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: {{ $n }}-redpanda.{{ .Release.Namespace }}.svc:9092
+        consumerGroup: floe-processor
+        topic: {{ .Values.kafka.topic }}
+        lagThreshold: {{ $a.lagThreshold | quote }}
+        activationLagThreshold: {{ $a.activationLagThreshold | quote }}
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
+{{- else }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $n }}-processor
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: {{ $n }}-processor}
+  minReplicas: {{ $a.minReplicas }}
+  maxReplicas: {{ min $a.maxReplicas .Values.kafka.partitions }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: {{ $a.targetCPUUtilizationPercentage }}}
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $n }}-processor
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "processor") | nindent 6 }}

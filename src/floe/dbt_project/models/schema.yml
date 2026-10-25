@@ -1,0 +1,31 @@
+version: 2
+models:
+  - name: wiki_edits
+    description: Silver edits, one row per event_id.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: event_time
+        data_tests: [not_null]
+      - name: wiki
+        data_tests: [not_null]
+      - name: change_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [edit, new, log, categorize]
+      - name: namespace
+        data_tests: [not_null]
+  - name: edits_per_minute
+    columns:
+      - name: edits
+        data_tests: [not_null]
+  - name: wiki_leaderboard
+    columns:
+      - name: wiki
+        data_tests: [unique, not_null]
+  - name: top_pages
+    columns:
+      - name: rank
+        data_tests: [unique, not_null]
+  - name: ingest_quality

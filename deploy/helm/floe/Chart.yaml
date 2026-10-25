@@ -1,0 +1,10 @@
+apiVersion: v2
+name: floe
+description: Streaming + batch Iceberg lakehouse on Kubernetes (Redpanda, exactly-once processor, Iceberg on MinIO via Lakekeeper, dbt/DuckDB, query API, KEDA, Prometheus/Grafana).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/sushmit-gujar/floe
+maintainers:
+  - name: Sushmit Gujar
+    email: sushmit.gujar@gmail.com

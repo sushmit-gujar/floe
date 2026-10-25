@@ -1,0 +1,67 @@
+{{- $n := include "floe.name" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $n }}-lakekeeper
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "floe.selector" (dict "root" . "component" "lakekeeper") | nindent 4 }}
+  ports:
+    - {name: http, port: 8181, targetPort: 8181}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $n }}-lakekeeper
+  labels: {{- include "floe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: lakekeeper
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "lakekeeper") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "floe.labels" . | nindent 8 }}
+        app.kubernetes.io/component: lakekeeper
+        floe.io/s3-client: "true"
+        floe.io/postgres-client: "true"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: migrate
+          image: {{ .Values.lakekeeper.image }}
+          args: [migrate]
+          env: &lkenv
+            - name: PG_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $n }}-credentials, key: postgres-password}}
+            - name: LAKEKEEPER__PG_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: {{ $n }}-credentials, key: lakekeeper-encryption-key}}
+            - {name: LAKEKEEPER__PG_DATABASE_URL_READ, value: "postgresql://catalog:$(PG_PASSWORD)@{{ $n }}-postgres:5432/catalog"}
+            - {name: LAKEKEEPER__PG_DATABASE_URL_WRITE, value: "postgresql://catalog:$(PG_PASSWORD)@{{ $n }}-postgres:5432/catalog"}
+            - {name: RUST_LOG, value: "info"}
+          securityContext: &lksc
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources: {{- toYaml .Values.lakekeeper.resources | nindent 12 }}
+      containers:
+        - name: lakekeeper
+          image: {{ .Values.lakekeeper.image }}
+          args: [serve]
+          env: *lkenv
+          ports:
+            - {name: http, containerPort: 8181}
+          readinessProbe:
+            httpGet: {path: /health, port: 8181}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: 8181}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext: *lksc
+          resources: {{- toYaml .Values.lakekeeper.resources | nindent 12 }}

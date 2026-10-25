@@ -1,0 +1,117 @@
+# floe Helm values. Defaults fit a single-node kind cluster on a laptop (~3 GB RAM total).
+
+image:
+  repository: floe
+  tag: dev
+  pullPolicy: IfNotPresent
+
+kafka:
+  topic: wiki.recentchange.v1
+  partitions: 6
+
+warehouse: floe
+bucket: lake
+
+# Pod/container hardening applied to every floe-built workload.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile: {type: RuntimeDefault}
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+
+processor:
+  batchMaxRows: 20000
+  flushIntervalSeconds: 2
+  resources:
+    requests: {cpu: 100m, memory: 160Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  autoscaling:
+    # KEDA scales the processor on Kafka consumer-group lag (needs the KEDA operator).
+    keda: true
+    minReplicas: 1
+    maxReplicas: 6          # never above the partition count
+    lagThreshold: "5000"    # target lag per replica
+    activationLagThreshold: "0"
+    pollingInterval: 5
+    cooldownPeriod: 60
+    scaleDownStabilizationSeconds: 60
+    # Used when keda=false: plain CPU HPA.
+    targetCPUUtilizationPercentage: 70
+
+producer:
+  live:
+    enabled: true            # forward the live Wikimedia EventStreams feed
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+      limits: {cpu: 300m, memory: 192Mi}
+
+transform:
+  schedule: "*/5 * * * *"
+  lookbackHours: 24
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "2", memory: 1536Mi}
+
+maintain:
+  schedule: "23 * * * *"
+  expireHours: 24
+
+api:
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 160Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+redpanda:
+  image: docker.redpanda.com/redpandadata/redpanda:v26.2.2
+  memory: 512M
+  storage: 4Gi
+  resources:
+    requests: {cpu: 250m, memory: 640Mi}
+    limits: {cpu: "1", memory: 800Mi}
+
+minio:
+  # MinIO stopped publishing community images in Oct 2025; Chainguard builds MinIO from source.
+  image: cgr.dev/chainguard/minio:latest
+  storage: 8Gi
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+
+postgres:
+  image: postgres:17-alpine
+  storage: 1Gi
+  resources:
+    requests: {cpu: 25m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+lakekeeper:
+  image: quay.io/lakekeeper/catalog:v0.14.1
+  resources:
+    requests: {cpu: 25m, memory: 32Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+prometheus:
+  enabled: true
+  image: prom/prometheus:v3.15.1
+  retention: 12h
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+grafana:
+  enabled: true
+  image: grafana/grafana:13.2.4
+  anonymousViewer: true      # local demo convenience; disable outside a laptop cluster
+  resources:
+    requests: {cpu: 25m, memory: 96Mi}
+    limits: {cpu: 500m, memory: 384Mi}
+
+networkPolicies:
+  enabled: true
+  kedaNamespace: keda

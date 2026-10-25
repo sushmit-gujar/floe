@@ -1,0 +1,120 @@
+{{- if .Values.networkPolicies.enabled }}
+{{- $n := include "floe.name" . -}}
+{{- $sel := dict "root" . }}
+# Default deny all ingress in the namespace; every flow below is explicitly allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-default-deny-ingress
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-redpanda
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "redpanda") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {floe.io/kafka-client: "true"}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: {{ .Values.networkPolicies.kedaNamespace }}}}
+        - podSelector: {matchLabels: {app.kubernetes.io/component: redpanda}}
+      ports: [{port: 9092}, {port: 33145}]
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/component: prometheus}}
+        - podSelector: {matchLabels: {floe.io/kafka-client: "true"}}
+      ports: [{port: 9644}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-minio
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "minio") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {floe.io/s3-client: "true"}}
+      ports: [{port: 9000}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-postgres
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "postgres") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {floe.io/postgres-client: "true"}}
+      ports: [{port: 5432}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-lakekeeper
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "lakekeeper") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {floe.io/catalog-client: "true"}}
+      ports: [{port: 8181}]
+---
+# Metrics endpoints: scraped by Prometheus only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-processor-metrics
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "processor") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/component: prometheus}}
+      ports: [{port: 8080}]
+---
+# Serving layer: the query API accepts traffic from anywhere in the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-api
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports: [{port: 8000}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $n }}-observability
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: app.kubernetes.io/component, operator: In, values: [prometheus, grafana]}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports: [{port: 9090}, {port: 3000}]
+{{- end }}

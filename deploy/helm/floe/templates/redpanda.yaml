@@ -1,0 +1,98 @@
+{{- $n := include "floe.name" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $n }}-redpanda
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "floe.selector" (dict "root" . "component" "redpanda") | nindent 4 }}
+  ports:
+    - {name: kafka, port: 9092, targetPort: 9092}
+    - {name: admin, port: 9644, targetPort: 9644}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $n }}-redpanda-headless
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "floe.selector" (dict "root" . "component" "redpanda") | nindent 4 }}
+  ports:
+    - {name: kafka, port: 9092}
+    - {name: rpc, port: 33145}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $n }}-redpanda
+  labels: {{- include "floe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redpanda
+spec:
+  serviceName: {{ $n }}-redpanda-headless
+  replicas: 1
+  selector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "redpanda") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "floe.labels" . | nindent 8 }}
+        app.kubernetes.io/component: redpanda
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9644"
+        prometheus.io/path: /public_metrics
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: redpanda
+          image: {{ .Values.redpanda.image }}
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=1
+            - --memory={{ .Values.redpanda.memory }}
+            - --reserve-memory=0M
+            - --default-log-level=warn
+            - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+            - --advertise-kafka-addr=PLAINTEXT://{{ $n }}-redpanda.{{ .Release.Namespace }}.svc.cluster.local:9092
+            - --rpc-addr=0.0.0.0:33145
+            - --advertise-rpc-addr={{ $n }}-redpanda-0.{{ $n }}-redpanda-headless.{{ .Release.Namespace }}.svc.cluster.local:33145
+          ports:
+            - {name: kafka, containerPort: 9092}
+            - {name: admin, containerPort: 9644}
+            - {name: rpc, containerPort: 33145}
+          readinessProbe:
+            httpGet: {path: /v1/status/ready, port: 9644}
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: {path: /v1/status/ready, port: 9644}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources: {{- toYaml .Values.redpanda.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/redpanda/data}
+            - {name: config, mountPath: /etc/redpanda}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: {{ .Values.redpanda.storage }}}}

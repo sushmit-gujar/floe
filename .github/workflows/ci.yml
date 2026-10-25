@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: unit + integration (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: uv pip install --system -e ".[dev]"
+      - name: Lint
+        run: ruff check src tests bench deploy
+      - name: Tests (SQLite Iceberg catalog, dbt + DuckDB, no broker needed)
+        run: pytest -q -p no:warnings
+
+  chart:
+    name: helm lint + kubeconform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar -xz -C /usr/local/bin kubeconform
+      - name: Lint and validate
+        run: |
+          helm lint deploy/helm/floe
+          helm template floe deploy/helm/floe -n floe > /tmp/floe.yaml
+          kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.33.0 /tmp/floe.yaml
+          helm template floe deploy/helm/floe -n floe --set processor.autoscaling.keda=false --set networkPolicies.enabled=false \
+            | kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.33.0
+
+  image:
+    name: build + scan image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          tags: floe:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Runs as non-root
+        run: test "$(docker run --rm --entrypoint id floe:ci -u)" = "10001"
+      - name: Trivy (gate on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: floe:ci
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      - name: Trivy SARIF (all severities, informational)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: floe:ci
+          scanners: vuln
+          format: sarif
+          output: trivy-image.sarif
+          skip-setup-trivy: true
+      - name: Trivy misconfiguration scan of the Helm chart
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: deploy/helm/floe
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          skip-setup-trivy: true
+      - name: Upload SARIF
+        if: always() && github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  e2e:
+    name: kind e2e (deploy, push events, assert exactly-once + quality)
+    runs-on: ubuntu-latest
+    needs: [test, chart]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: floe
+          config: deploy/kind/cluster.yaml
+          wait: 120s
+      - name: Build and load image
+        run: make image load
+      - name: Install KEDA
+        run: make keda
+      - name: Deploy floe
+        run: make deploy
+      - name: End-to-end test
+        run: python3 tests/e2e/run_e2e.py --require-netpol --out results/e2e-ci.json
+      - name: Benchmark smoke (steady latency + pod kill)
+        run: |
+          python3 bench/run_bench.py --scenarios steady,kill --steady-rate 1000 --steady-seconds 30 \
+            --kill-rate 1000 --kill-seconds 60 --kill-after 20 --out results/bench-ci.json
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl -n floe get pods -o wide
+          kubectl -n floe get events --sort-by=.lastTimestamp | tail -50
+          for d in processor api lakekeeper; do kubectl -n floe logs deploy/floe-$d --all-containers --tail=80 || true; done
+          kubectl -n keda logs deploy/keda-operator --tail=50 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-results
+          path: results/*-ci.json

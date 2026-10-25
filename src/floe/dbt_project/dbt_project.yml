@@ -1,0 +1,17 @@
+name: floe
+version: "0.1.0"
+config-version: 2
+profile: floe
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+vars:
+  max_reject_rate: 0.05
+  freshness_sla_seconds: 900
+  late_after_seconds: 600
+models:
+  floe:
+    staging: {+materialized: view, +schema: staging}
+    silver: {+materialized: table, +schema: silver}
+    gold: {+materialized: table, +schema: gold}
+    ops: {+materialized: table, +schema: ops}

@@ -1,0 +1,44 @@
+{{- $n := include "floe.name" . -}}
+{{- range $job := list (dict "name" "transform" "schedule" .Values.transform.schedule "args" (list "transform") "deadline" 900 "resources" .Values.transform.resources)
+                       (dict "name" "maintain" "schedule" .Values.maintain.schedule "args" (list "maintain" "--expire-hours" (toString $.Values.maintain.expireHours)) "deadline" 900 "resources" .Values.transform.resources) }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $n }}-{{ $job.name }}
+  labels: {{- include "floe.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $job.name }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ $job.deadline }}
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels: {{- include "floe.labels" $ | nindent 12 }}
+            app.kubernetes.io/component: {{ $job.name }}
+            floe.io/catalog-client: "true"
+            floe.io/s3-client: "true"
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ $n }}-workload
+          automountServiceAccountToken: false
+          securityContext: {{- toYaml $.Values.podSecurityContext | nindent 12 }}
+          initContainers: {{- include "floe.waitReady" (dict "root" $ "kafka" false) | nindent 12 }}
+          containers:
+            - name: {{ $job.name }}
+              image: {{ include "floe.image" $ }}
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              args: {{- toYaml $job.args | nindent 16 }}
+              envFrom: {{- include "floe.envFrom" $ | nindent 16 }}
+              securityContext: {{- toYaml $.Values.containerSecurityContext | nindent 16 }}
+              resources: {{- toYaml $job.resources | nindent 16 }}
+              volumeMounts: {{- include "floe.tmpMount" $ | nindent 16 }}
+          volumes: {{- include "floe.tmpVolume" $ | nindent 12 }}
+---
+{{- end }}

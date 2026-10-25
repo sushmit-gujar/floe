@@ -1,0 +1,55 @@
+{{- $n := include "floe.name" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $n }}-api
+  labels: {{- include "floe.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "floe.selector" (dict "root" . "component" "api") | nindent 4 }}
+  ports:
+    - {name: http, port: 8000, targetPort: 8000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $n }}-api
+  labels: {{- include "floe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "floe.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        floe.io/catalog-client: "true"
+        floe.io/s3-client: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: {{ $n }}-workload
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers: {{- include "floe.waitReady" (dict "root" . "kafka" false) | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "floe.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [api, --port, "8000"]
+          envFrom: {{- include "floe.envFrom" . | nindent 12 }}
+          ports:
+            - {name: http, containerPort: 8000}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts: {{- include "floe.tmpMount" . | nindent 12 }}
+      volumes: {{- include "floe.tmpVolume" . | nindent 8 }}

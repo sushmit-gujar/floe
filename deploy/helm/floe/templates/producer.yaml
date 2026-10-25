@@ -1,0 +1,36 @@
+{{- if .Values.producer.live.enabled }}
+{{- $n := include "floe.name" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $n }}-producer-live
+  labels: {{- include "floe.labels" . | nindent 4 }}
+    app.kubernetes.io/component: producer-live
+spec:
+  replicas: 1
+  # Single writer for an SSE feed: a RollingUpdate briefly runs two producers on the same
+  # stream and doubles events (measured: ~4.1k repeats during four restarts). Recreate avoids it.
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {{- include "floe.selector" (dict "root" . "component" "producer-live") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "floe.labels" . | nindent 8 }}
+        app.kubernetes.io/component: producer-live
+        floe.io/kafka-client: "true"
+    spec:
+      serviceAccountName: {{ $n }}-workload
+      automountServiceAccountToken: false
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers: {{- include "floe.waitReady" (dict "root" . "kafka" true) | nindent 8 }}
+      containers:
+        - name: producer
+          image: {{ include "floe.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [produce, wikimedia]
+          envFrom: {{- include "floe.envFrom" . | nindent 12 }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources: {{- toYaml .Values.producer.live.resources | nindent 12 }}
+          volumeMounts: {{- include "floe.tmpMount" . | nindent 12 }}
+      volumes: {{- include "floe.tmpVolume" . | nindent 8 }}
+{{- end }}
